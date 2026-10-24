@@ -23,8 +23,9 @@ MEM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
 
 say "Installing system packages"
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y -qq git curl openssl ca-certificates >/dev/null
+APT=(apt-get -o DPkg::Lock::Timeout=600) # waits if automatic updates are running
+"${APT[@]}" update -qq
+"${APT[@]}" install -y -qq git curl openssl ca-certificates >/dev/null
 
 if ! command -v docker >/dev/null 2>&1; then
   say "Installing Docker"
@@ -80,7 +81,7 @@ say "Starting services"
 "${COMPOSE[@]}" up -d --remove-orphans
 
 say "Waiting for the application and its HTTPS certificate"
-for i in $(seq 1 90); do
+for i in $(seq 1 180); do
   if curl -fsS "https://$APP_HOST/api/v1/health" >/dev/null 2>&1; then READY=1; break; fi
   sleep 5
 done

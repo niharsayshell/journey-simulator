@@ -15,6 +15,18 @@ You need a small rented server. It costs about €5–25 a month, and the whole 
 
 DigitalOcean works the same way: create a **Droplet** with **Ubuntu 24.04**, **4 GB RAM**.
 
+## Easiest option — no password needed
+
+When you create the server in Hetzner, scroll down to **Cloud config** and paste this into the box:
+
+```
+#cloud-config
+runcmd:
+  - curl -fsSL https://raw.githubusercontent.com/niharsayshell/journey-simulator/main/deploy/install.sh | bash > /var/log/journey-install.log 2>&1
+```
+
+Click **Create & Buy now**, wait about 20 minutes, then open `https://` followed by the server's IP address with dashes instead of dots, followed by `.sslip.io`. For example, IP `65.21.100.42` becomes `https://65-21-100-42.sslip.io`. Then continue at Step 4.
+
 ## Step 2 — Open the server's console
 
 In the Hetzner Cloud Console, click your server, then the **`>_` (Console)** icon at the top right. A black window opens.
