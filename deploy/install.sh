@@ -9,6 +9,14 @@
 # Re-running the command updates the installation to the latest code; data is kept.
 set -euo pipefail
 
+# The update below replaces this file on disk; run from a private copy so bash
+# never reads a half-replaced script.
+if [ -z "${JS_REEXEC:-}" ] && [ -f "${BASH_SOURCE[0]:-}" ]; then
+  tmp=$(mktemp)
+  cp "${BASH_SOURCE[0]}" "$tmp"
+  JS_REEXEC=1 exec bash "$tmp" "$@"
+fi
+
 REPO_URL="${REPO_URL:-https://github.com/niharsayshell/journey-simulator.git}"
 BRANCH="${BRANCH:-main}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/journey-simulator}"
@@ -42,8 +50,12 @@ fi
 
 say "Downloading Journey Simulator"
 if [ -d "$INSTALL_DIR/.git" ]; then
+  BEFORE=$(git -C "$INSTALL_DIR" rev-parse HEAD)
   git -C "$INSTALL_DIR" fetch -q origin "$BRANCH"
   git -C "$INSTALL_DIR" reset -q --hard "origin/$BRANCH"
+  if [ "${AUTO_UPDATE:-0}" = 1 ] && [ "$BEFORE" = "$(git -C "$INSTALL_DIR" rev-parse HEAD)" ]; then
+    echo "$(date -Is) no new version"; exit 0
+  fi
 else
   git clone -q --depth 1 --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
 fi
@@ -70,6 +82,13 @@ APP_HOST=$(grep '^APP_HOST=' "$ENV_FILE" | cut -d= -f2)
 
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
   ufw allow 80/tcp >/dev/null && ufw allow 443/tcp >/dev/null
+fi
+
+# Nightly automatic update at 03:30 server time (only rebuilds when a new version was pushed).
+# Disable with:  rm /etc/cron.d/journey-simulator-update   (or install with NO_AUTO_UPDATE=1)
+if [ "${NO_AUTO_UPDATE:-0}" != 1 ]; then
+  echo "30 3 * * * root AUTO_UPDATE=1 bash $INSTALL_DIR/deploy/install.sh >> /var/log/journey-update.log 2>&1" > /etc/cron.d/journey-simulator-update
+  chmod 644 /etc/cron.d/journey-simulator-update
 fi
 
 COMPOSE=(docker compose --project-name journey -f deploy/docker-compose.prod.yml --env-file "$ENV_FILE")
@@ -100,7 +119,7 @@ if [ "${READY:-0}" = 1 ]; then
   2. To try the demo, authorize the website  demo.$APP_HOST  (scheme https).
   3. Test proxy for trying the proxy feature: host  test-proxy  port  8899
 
-  Update later by running the same install command again.
+  New versions install automatically every night at 03:30 (server time).
 ==============================================================
 DONE
 else

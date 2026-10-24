@@ -67,7 +67,7 @@ To try proxies, go to **Proxy profiles**, add host `test-proxy` and port `8899`,
 
 ## Updating later
 
-When new features are added, open the console again and paste the same command. Your data is kept.
+New versions install **automatically every night at 03:30** (server time). Your data is kept. The site may be briefly unavailable for a minute or two while an update installs. To update immediately instead, paste the install command into the console again.
 
 ## If something goes wrong
 
