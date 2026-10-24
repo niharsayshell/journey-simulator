@@ -11,3 +11,4 @@ coverage
 *.tsbuildinfo
 next-env.d.ts
 deploy/.env.prod
+dump.rdb
