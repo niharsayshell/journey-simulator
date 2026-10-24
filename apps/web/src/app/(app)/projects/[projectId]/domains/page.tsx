@@ -39,12 +39,16 @@ function DomainCard({ d, onChange }: { d: Domain; onChange: () => void }) {
   const [busy, setBusy] = useState<"verify" | "delete" | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [result, setResult] = useState<{ ok: boolean; detail: string } | null>(null);
+  const attested = d.status === "ATTESTED";
 
   async function verify() {
     setBusy("verify");
     setError(null);
     try {
-      const r = await api<{ result: { ok: boolean; detail: string } }>(`/domains/${d.id}/verify`, { method: "POST" });
+      const r = await api<{ result: { ok: boolean; detail: string } }>(`/domains/${d.id}/verify`, {
+        method: "POST",
+        body: attested ? { method: "HTTP_FILE" } : {},
+      });
       setResult(r.result);
       onChange();
     } catch (err) {
@@ -74,21 +78,56 @@ function DomainCard({ d, onChange }: { d: Domain; onChange: () => void }) {
           </CardTitle>
           <CardDescription className="mt-1">
             {d.allowSubdomains ? "Includes subdomains · " : ""}
-            {d.method === "DNS_TXT" ? "DNS TXT record" : "Hosted verification file"}
+            {attested
+              ? `You confirmed you own it or have permission${d.attestedAt ? ` · ${formatDate(d.attestedAt)}` : ""}`
+              : d.method === "DNS_TXT"
+                ? "DNS TXT record"
+                : "Hosted verification file"}
             {d.verifiedAt ? ` · verified ${formatDate(d.verifiedAt)}` : ""}
           </CardDescription>
         </div>
         <div className="flex gap-2">
-          <Button size="sm" variant={d.status === "VERIFIED" ? "outline" : "default"} onClick={verify} loading={busy === "verify"}>
-            <RefreshCw /> {d.status === "VERIFIED" ? "Re-check" : "Verify now"}
-          </Button>
+          {!attested && (
+            <Button size="sm" variant={d.status === "VERIFIED" ? "outline" : "default"} onClick={verify} loading={busy === "verify"}>
+              <RefreshCw /> {d.status === "VERIFIED" ? "Re-check" : "Verify now"}
+            </Button>
+          )}
           <Button size="icon" variant="ghost" onClick={remove} disabled={busy !== null} aria-label={`Remove ${d.host}`}>
             <Trash2 />
           </Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
-        {d.status !== "VERIFIED" &&
+        {attested && (
+          <details className="rounded-lg border p-3">
+            <summary className="cursor-pointer font-medium">Prove ownership (optional)</summary>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Not required — the website can already be tested. Proving ownership upgrades it to “verified”.
+            </p>
+            <div className="mt-3">
+          <div className="space-y-2">
+              <p>Publish a plain-text file at:</p>
+              <CopyValue value={d.instructions.file.url} />
+              <p>containing exactly:</p>
+              <CopyValue value={d.instructions.file.contents} />
+              {(["localhost", "demo-site"].includes(d.hostname) || d.hostname.startsWith("demo.")) && (
+                <p className="text-xs text-muted-foreground">
+                  Using the bundled Demo Shop? Open{" "}
+                  <a className="underline" href={d.hostname.startsWith("demo.") ? `${d.scheme}://${d.host}/owner` : `http://localhost:${d.port ?? 4100}/owner`} target="_blank" rel="noreferrer">
+                    its owner page
+                  </a>{" "}
+                  and paste the value to publish it.
+                </p>
+              )}
+            </div>
+            </div>
+            <Button size="sm" className="mt-3" onClick={verify} loading={busy === "verify"}>
+              <RefreshCw /> Check now
+            </Button>
+          </details>
+        )}
+        {!attested &&
+          d.status !== "VERIFIED" &&
           (d.method === "DNS_TXT" ? (
             <div className="space-y-2">
               <p>
@@ -99,7 +138,7 @@ function DomainCard({ d, onChange }: { d: Domain; onChange: () => void }) {
               <CopyValue value={d.instructions.dns.value} />
             </div>
           ) : (
-            <div className="space-y-2">
+          <div className="space-y-2">
               <p>Publish a plain-text file at:</p>
               <CopyValue value={d.instructions.file.url} />
               <p>containing exactly:</p>
@@ -120,7 +159,7 @@ function DomainCard({ d, onChange }: { d: Domain; onChange: () => void }) {
             {result.detail}
           </Alert>
         )}
-        {!result && d.lastCheckError && d.status !== "VERIFIED" && <Alert variant="warning" title="Last check failed">{d.lastCheckError}</Alert>}
+        {!result && d.lastCheckError && d.status !== "VERIFIED" && !attested && <Alert variant="warning" title="Last check failed">{d.lastCheckError}</Alert>}
         <ErrorAlert error={error} />
       </CardContent>
     </Card>
@@ -131,7 +170,8 @@ export default function DomainsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const { data, error, isLoading, mutate } = useApi<Paginated<Domain>>(`/domains?projectId=${projectId}&limit=100`);
   const [host, setHost] = useState("");
-  const [method, setMethod] = useState<"HTTP_FILE" | "DNS_TXT">("HTTP_FILE");
+  const [method, setMethod] = useState<"SELF_ATTESTED" | "HTTP_FILE" | "DNS_TXT">("SELF_ATTESTED");
+  const [confirmed, setConfirmed] = useState(false);
   const [scheme, setScheme] = useState<"https" | "http">("https");
   const [allowSubdomains, setAllowSubdomains] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -142,7 +182,8 @@ export default function DomainsPage() {
     setSaving(true);
     setSaveError(null);
     try {
-      await api("/domains", { method: "POST", body: { projectId, host: host.trim(), method, scheme, allowSubdomains } });
+      await api("/domains", { method: "POST", body: { projectId, host: host.trim().replace(/^https?:\/\//i, "").replace(/\/.*$/, ""), method, scheme, allowSubdomains, attestation: method === "SELF_ATTESTED" ? confirmed : undefined } });
+      setConfirmed(false);
       setHost("");
       void mutate();
     } catch (err) {
@@ -156,7 +197,7 @@ export default function DomainsPage() {
     <>
       <PageHeader
         title="Website authorization"
-        description="Only verified domains can be used as automation targets. Navigation to any other host is blocked during runs."
+        description="Only websites listed here can be tested. Navigation to any other site is blocked during runs."
         crumbs={[{ href: `/projects/${projectId}`, label: "Project" }, { label: "Website authorization" }]}
       />
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
@@ -164,27 +205,28 @@ export default function DomainsPage() {
           {isLoading && <Spinner />}
           <ErrorAlert error={error} />
           {data?.items.length === 0 && (
-            <EmptyState icon={ShieldCheck} title="No domains yet" description="Add a website you own or have explicit permission to test, then verify ownership." />
+            <EmptyState icon={ShieldCheck} title="No domains yet" description="Add a website you own or have explicit permission to test." />
           )}
           {data?.items.map((d) => <DomainCard key={d.id} d={d} onChange={() => void mutate()} />)}
         </div>
         <Card className="h-fit">
           <CardHeader>
             <CardTitle>Add a website</CardTitle>
-            <CardDescription>For the bundled demo, use host <code>localhost:4100</code> with scheme http.</CardDescription>
+            <CardDescription>Enter the website address, e.g. <code>shop.example.com</code>.</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={add} className="space-y-4">
-              <Field label="Host" htmlFor="host" hint="Hostname with optional port. No scheme or path.">
+              <Field label="Website" htmlFor="host" hint="Just the address, e.g. shop.example.com (a port like :8080 is allowed).">
                 <Input id="host" required value={host} onChange={(e) => setHost(e.target.value)} placeholder="shop.example.com" />
               </Field>
-              <Field label="Verification method" htmlFor="method">
+              <Field label="How do you want to authorize it?" htmlFor="method">
                 <NativeSelect id="method" value={method} onChange={(e) => setMethod(e.target.value as typeof method)}>
-                  <option value="HTTP_FILE">Hosted file (/.well-known/…)</option>
-                  <option value="DNS_TXT">DNS TXT record</option>
+                  <option value="SELF_ATTESTED">I confirm I own it / have permission (simplest)</option>
+                  <option value="HTTP_FILE">Prove with a hosted file (/.well-known/…)</option>
+                  <option value="DNS_TXT">Prove with a DNS TXT record</option>
                 </NativeSelect>
               </Field>
-              {method === "HTTP_FILE" && (
+              {method !== "DNS_TXT" && (
                 <Field label="Scheme" htmlFor="scheme">
                   <NativeSelect id="scheme" value={scheme} onChange={(e) => setScheme(e.target.value as typeof scheme)}>
                     <option value="https">https</option>
@@ -193,11 +235,19 @@ export default function DomainsPage() {
                 </Field>
               )}
               <Checkbox label="Also authorize subdomains" checked={allowSubdomains} onChange={(e) => setAllowSubdomains(e.target.checked)} />
-              <p className="text-xs text-muted-foreground">
-                By adding a domain you confirm you own it or have explicit permission to run automated tests against it.
-              </p>
+              {method === "SELF_ATTESTED" ? (
+                <Checkbox
+                  label="I own this website or have explicit permission to run automated tests on it. I understand this confirmation is recorded."
+                  checked={confirmed}
+                  onChange={(e) => setConfirmed(e.target.checked)}
+                />
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  By adding a website you confirm you own it or have explicit permission to run automated tests against it.
+                </p>
+              )}
               <ErrorAlert error={saveError} title="Could not add domain" />
-              <Button type="submit" loading={saving} className="w-full">
+              <Button type="submit" loading={saving} className="w-full" disabled={method === "SELF_ATTESTED" && !confirmed}>
                 Add website
               </Button>
             </form>

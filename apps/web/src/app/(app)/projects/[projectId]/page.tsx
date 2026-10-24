@@ -23,7 +23,7 @@ export default function ProjectOverview() {
   if (error) return <ErrorAlert error={error} />;
   if (!p) return <Spinner />;
   const base = `/projects/${projectId}`;
-  const verified = domains?.items.filter((d) => d.status === "VERIFIED").length ?? 0;
+  const verified = domains?.items.filter((d) => (d.status === "VERIFIED" || d.status === "ATTESTED")).length ?? 0;
   const steps = [
     { done: verified > 0, label: "Authorize a website", href: `${base}/domains`, icon: ShieldCheck },
     { done: (scenarios?.items.length ?? 0) > 0, label: "Create a scenario", href: `${base}/scenarios/new`, icon: ListChecks },

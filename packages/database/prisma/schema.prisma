@@ -23,11 +23,15 @@ enum ProjectRole {
 enum VerificationMethod {
   DNS_TXT
   HTTP_FILE
+  /// The user confirmed ownership/permission without technical proof.
+  SELF_ATTESTED
 }
 
 enum DomainStatus {
   PENDING
   VERIFIED
+  /// Usable for testing on the strength of the user's declaration (see attestedById).
+  ATTESTED
   FAILED
   REVOKED
 }
@@ -179,6 +183,8 @@ model VerifiedDomain {
   verificationToken String
   status            DomainStatus       @default(PENDING)
   verifiedAt        DateTime?
+  attestedById      String?
+  attestedAt        DateTime?
   lastCheckedAt     DateTime?
   lastCheckError    String?
   createdAt         DateTime           @default(now())

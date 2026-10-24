@@ -26,10 +26,11 @@ export interface Domain {
   port: number | null;
   host: string;
   allowSubdomains: boolean;
-  method: "DNS_TXT" | "HTTP_FILE";
+  method: "DNS_TXT" | "HTTP_FILE" | "SELF_ATTESTED";
   scheme: string;
-  status: "PENDING" | "VERIFIED" | "FAILED" | "REVOKED";
+  status: "PENDING" | "VERIFIED" | "ATTESTED" | "FAILED" | "REVOKED";
   verifiedAt: string | null;
+  attestedAt: string | null;
   lastCheckedAt: string | null;
   lastCheckError: string | null;
   createdAt: string;

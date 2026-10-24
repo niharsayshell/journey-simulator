@@ -53,16 +53,17 @@ https://65-21-100-42.sslip.io
 
 Open the link and click **Create an account**. **The first account becomes the administrator, and sign-up then closes**, so nobody else can register.
 
-## Step 5 — Try the demo
+## Step 5 — Test your first website
 
-1. **Projects → New project**
-2. **Website authorization → Add a website**:
-   - Host: `demo.65-21-100-42.sslip.io` (use your own numbers)
-   - Verification method: Hosted file
-   - Scheme: https
-3. Copy the value it shows. Open the **"its owner page"** link, paste the value, and click **Publish**. Back in the tool, click **Verify now**.
-4. **Scenarios → New scenario → Load Demo Shop example → Save scenario → Run → Start**.
-5. To try proxies, go to **Proxy profiles** and add host `test-proxy`, port `8899`, then click **Test**.
+On the dashboard, use **Quick start**:
+
+1. Paste the website address, e.g. `shop.example.com`. To try the bundled demo, use `demo.65-21-100-42.sslip.io` with your own numbers.
+2. Tick the box confirming you own the website or have permission to test it.
+3. Click **Create project & start testing**. A first journey is created for you. Press **Run**, then **Start**.
+
+Proving ownership with DNS or a hosted file is optional; you can do it later under **Website authorization**.
+
+To try proxies, go to **Proxy profiles**, add host `test-proxy` and port `8899`, then click **Test**.
 
 ## Updating later
 

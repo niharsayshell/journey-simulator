@@ -11,7 +11,8 @@ This is the **first delivery**: Phase 1 (foundation) plus the basic execution pa
 | Area | State |
 |---|---|
 | Accounts, projects, roles (OWNER/ADMIN/MEMBER/VIEWER enforced in API) | ✅ |
-| Website authorization (DNS TXT / hosted file), SSRF and redirect protection | ✅ |
+| Quick start: website URL → project + authorized site + starter journey | ✅ |
+| Website authorization: self-declared (recorded) or proven by DNS TXT / hosted file; SSRF and redirect protection | ✅ |
 | Scenario CRUD, versioning, visual step editor + JSON mode | ✅ |
 | 11 step types: NAVIGATE, WAIT, CLICK, SCROLL, HOVER, TYPE, SELECT, ASSERT_VISIBLE, ASSERT_TEXT, ASSERT_URL, SCREENSHOT | ✅ |
 | Repeated execution: iterations, parallel browsers, launch delay, failure threshold, dry run | ✅ |

@@ -48,7 +48,35 @@ export const createDomainInput = z.object({
   method: z.enum(VERIFICATION_METHODS).default("HTTP_FILE"),
   /** Scheme used for HTTP_FILE verification. */
   scheme: z.enum(["https", "http"]).default("https"),
+  /** Required for SELF_ATTESTED: the user confirms ownership or explicit permission. */
+  attestation: z.boolean().optional(),
 });
+
+export const verifyDomainInput = z.object({
+  /** Upgrade a self-declared domain to a proven one using this method. */
+  method: z.enum(["DNS_TXT", "HTTP_FILE"]).optional(),
+});
+
+/** One-step setup: website URL → project + authorized domain + starter scenario. */
+export const quickStartInput = z.object({
+  /** With or without http(s)://. Without a scheme, https is tried first, then http. */
+  url: z
+    .string()
+    .trim()
+    .min(1, "Enter a website address")
+    .max(2048)
+    .refine((v) => {
+      try {
+        const u = new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`);
+        return u.hostname.length > 0;
+      } catch {
+        return false;
+      }
+    }, "Enter a valid website address, e.g. shop.example.com"),
+  projectName: z.string().trim().max(120).optional(),
+  attestation: z.literal(true, { errorMap: () => ({ message: "Please confirm you own this website or have permission to test it" }) }),
+});
+export type QuickStartInput = z.infer<typeof quickStartInput>;
 
 export const createScenarioInput = z.object({
   projectId: id,

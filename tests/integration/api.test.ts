@@ -178,6 +178,69 @@ describe("website authorization", () => {
   });
 });
 
+describe("quick start and self-declared websites", () => {
+  it("requires the ownership/permission confirmation", async () => {
+    const c = new Client(t);
+    await registerUser(c);
+    const r = await c.post("/quick-start", { url: `http://localhost:${port}/` });
+    expect(r.status).toBe(400);
+    expect(await prisma.project.count()).toBe(0);
+  });
+
+  it("creates a project, a self-declared website and a runnable starter scenario in one step", async () => {
+    const c = new Client(t);
+    const user = await registerUser(c);
+    const r = await c.post("/quick-start", { url: `localhost:${port}/products`, attestation: true });
+    expect(r.status, JSON.stringify(r.body)).toBe(201);
+    const projectId = r.body.project.id;
+    const domain = await prisma.verifiedDomain.findFirstOrThrow({ where: { projectId } });
+    expect(domain).toMatchObject({ hostname: "localhost", port, status: "ATTESTED", method: "SELF_ATTESTED", attestedById: user.id, scheme: "http" });
+    expect(await prisma.auditLog.count({ where: { projectId, action: "domain.attested" } })).toBe(1);
+    const sc = await c.get(`/scenarios/${r.body.scenarioId}`);
+    // No scheme typed and the site only speaks http → http was detected.
+    expect(sc.body.scenario.definition.startUrl).toBe(`http://localhost:${port}/products`);
+    expect(sc.body.scenario.definition.steps.map((s: { type: string }) => s.type)).toEqual(["NAVIGATE", "WAIT", "SCROLL", "SCREENSHOT"]);
+    const dry = await c.post("/batches", { scenarioId: r.body.scenarioId, iterations: 2, dryRun: true });
+    expect(dry.body).toMatchObject({ valid: true });
+  });
+
+  it("still blocks private and metadata addresses and cleans up on failure", async () => {
+    const c = new Client(t);
+    await registerUser(c);
+    for (const url of ["http://10.0.0.5/", "http://169.254.169.254/latest", "http://intranet/"]) {
+      const r = await c.post("/quick-start", { url, attestation: true });
+      expect(r.status, url).toBe(400);
+    }
+    expect(await prisma.project.count()).toBe(0);
+  });
+
+  it("can be switched off by the administrator", async () => {
+    const strict = await createTestApp({ ALLOW_SELF_ATTESTED_DOMAINS: "false" });
+    try {
+      const c = new Client(strict);
+      await registerUser(c);
+      const r = await c.post("/quick-start", { url: `http://localhost:${port}/`, attestation: true });
+      expect(r.status).toBe(403);
+      expect(r.body.error.code).toBe("ATTESTATION_DISABLED");
+    } finally {
+      await strict.close();
+    }
+  });
+
+  it("lets a self-declared website be upgraded to verified, and never downgrades it on a failed check", async () => {
+    const c = new Client(t);
+    await registerUser(c);
+    const p = await c.post("/projects", { name: "x" });
+    const d = await c.post("/domains", { projectId: p.body.project.id, host: `localhost:${port}`, scheme: "http", method: "SELF_ATTESTED", attestation: true });
+    expect(d.body.domain.status).toBe("ATTESTED");
+    const failed = await c.post(`/domains/${d.body.domain.id}/verify`, { method: "HTTP_FILE" });
+    expect(failed.body.domain.status).toBe("ATTESTED");
+    site.addVerificationValue(d.body.domain.instructions.file.contents);
+    const ok = await c.post(`/domains/${d.body.domain.id}/verify`, { method: "HTTP_FILE" });
+    expect(ok.body.domain).toMatchObject({ status: "VERIFIED", method: "HTTP_FILE" });
+  });
+});
+
 describe("scenarios", () => {
   it("creates, versions and archives scenarios", async () => {
     const c = new Client(t);

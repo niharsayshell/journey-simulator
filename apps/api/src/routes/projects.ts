@@ -50,7 +50,7 @@ export async function projectRoutes(app: FastifyInstance, _ctx: AppContext) {
         project: {
           select: {
             ...projectSelect,
-            _count: { select: { scenarios: true, domains: { where: { status: "VERIFIED" } }, batches: true } },
+            _count: { select: { scenarios: true, domains: { where: { status: { in: ["VERIFIED", "ATTESTED"] } } }, batches: true } },
           },
         },
       },

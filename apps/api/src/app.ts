@@ -16,6 +16,7 @@ import { runRoutes } from "./routes/runs";
 import { reportRoutes } from "./routes/reports";
 import { eventRoutes } from "./routes/events";
 import { systemRoutes } from "./routes/system";
+import { quickStartRoutes } from "./routes/quickstart";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
@@ -75,6 +76,7 @@ export async function buildApp(ctx: AppContext, opts: { logger?: boolean | objec
       await reportRoutes(v1, ctx);
       await eventRoutes(v1, ctx);
       await systemRoutes(v1, ctx);
+      await quickStartRoutes(v1, ctx);
     },
     { prefix: "/api/v1" },
   );

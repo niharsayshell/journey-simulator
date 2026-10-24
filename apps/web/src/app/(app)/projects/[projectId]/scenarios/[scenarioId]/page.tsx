@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Archive, History, Play } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
@@ -17,6 +17,7 @@ import { formatDate } from "@/lib/utils";
 export default function ScenarioPage() {
   const { projectId, scenarioId } = useParams<{ projectId: string; scenarioId: string }>();
   const router = useRouter();
+  const welcome = useSearchParams().get("welcome") === "1";
   const { data, error, mutate } = useApi<ScenarioDetail>(`/scenarios/${scenarioId}`, { revalidateOnFocus: false });
   const [draft, setDraft] = useState<ScenarioDraft | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -88,6 +89,12 @@ export default function ScenarioPage() {
         }
       />
       <div className="mb-4 space-y-3">
+        {welcome && !dirty && (
+          <Alert variant="success" title="Your website is ready to test">
+            We created this starter journey: open the page, pause, scroll and take a screenshot. Press <strong>Run</strong> to try it now, or add clicks,
+            typing and checks below and save a new version.
+          </Alert>
+        )}
         {dirty && <Alert variant="warning">You have unsaved changes. Save them to run the new version.</Alert>}
         {saved && <Alert variant="success">{saved}</Alert>}
         <ErrorAlert error={saveError} title="Could not save" />

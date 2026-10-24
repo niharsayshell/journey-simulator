@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma, type VerifiedDomain } from "@js/database";
 import {
+  assertPublicDestination,
   isIp,
   isPrivateAllowlisted,
   METADATA_HOSTNAMES,
@@ -9,12 +10,13 @@ import {
   verificationInstructions,
   verifyDomainOwnership,
 } from "@js/security";
-import { createDomainInput } from "@js/shared";
+import { createDomainInput, verifyDomainInput } from "@js/shared";
 import { requireProjectRole } from "../lib/access";
 import { audit } from "../lib/audit";
 import { ApiError, notFound, parse } from "../lib/errors";
 import { pageArgs, pageResult } from "../lib/pagination";
 import type { AppContext } from "../lib/context";
+import type { FastifyRequest } from "fastify";
 
 const idParams = z.object({ id: z.string().min(1).max(64) });
 const LABEL = /^(?!-)[a-z0-9-]{1,63}(?<!-)$/;
@@ -31,48 +33,95 @@ export function serializeDomain(d: VerifiedDomain) {
     scheme: d.scheme,
     status: d.status,
     verifiedAt: d.verifiedAt,
+    attestedAt: d.attestedAt,
     lastCheckedAt: d.lastCheckedAt,
     lastCheckError: d.lastCheckError,
     createdAt: d.createdAt,
-    instructions: verificationInstructions({ hostname: d.hostname, port: d.port, scheme: d.scheme, method: d.method, token: d.verificationToken }),
+    instructions: verificationInstructions({
+      hostname: d.hostname,
+      port: d.port,
+      scheme: d.scheme,
+      method: d.method === "DNS_TXT" ? "DNS_TXT" : "HTTP_FILE",
+      token: d.verificationToken,
+    }),
   };
+}
+
+/**
+ * Validate a host and register it for a project. SELF_ATTESTED domains are
+ * usable immediately on the strength of the user's declaration, which is
+ * recorded (who/when) and audited; DNS_TXT / HTTP_FILE start as PENDING.
+ */
+export async function createDomain(
+  req: FastifyRequest,
+  ctx: AppContext,
+  input: { projectId: string; host: string; method: "DNS_TXT" | "HTTP_FILE" | "SELF_ATTESTED"; scheme: "http" | "https"; allowSubdomains: boolean; attestation?: boolean },
+): Promise<VerifiedDomain> {
+  const [hostname, portStr] = input.host.replace(/\.$/, "").split(":") as [string, string | undefined];
+  const port = portStr ? Number(portStr) : null;
+  if (port !== null && (port < 1 || port > 65535)) throw new ApiError(400, "INVALID_HOST", "Port must be between 1 and 65535");
+  if (port === 80 || port === 443) throw new ApiError(400, "INVALID_HOST", "Omit default ports 80/443");
+
+  const probe = new URL(`${input.scheme}://${hostname}${port ? `:${port}` : ""}/`);
+  const allowlisted = isPrivateAllowlisted(probe, ctx.config.policy);
+  if (METADATA_HOSTNAMES.has(hostname)) throw new ApiError(400, "INVALID_HOST", "Metadata hosts cannot be authorized");
+  if (isIp(hostname) && !allowlisted) throw new ApiError(400, "INVALID_HOST", "Use the website's name (like shop.example.com), not an IP address");
+  if (!hostname.split(".").every((l) => LABEL.test(l))) throw new ApiError(400, "INVALID_HOST", "Invalid website address");
+  if (!hostname.includes(".") && !allowlisted) {
+    throw new ApiError(400, "INVALID_HOST", "Single-label hostnames (like localhost) must be allowlisted by an administrator");
+  }
+  if (input.method === "DNS_TXT" && allowlisted && !hostname.includes(".")) {
+    throw new ApiError(400, "INVALID_METHOD", "Use the hosted file method for local development hosts");
+  }
+  const user = req.user!;
+  if (input.method === "SELF_ATTESTED") {
+    if (!ctx.config.allowSelfAttested) {
+      throw new ApiError(403, "ATTESTATION_DISABLED", "The administrator requires proof of ownership (DNS or hosted file) on this installation");
+    }
+    if (input.attestation !== true) {
+      throw new ApiError(400, "ATTESTATION_REQUIRED", "Please confirm you own this website or have permission to test it");
+    }
+    // No ownership proof, so at least make sure it is a real public website.
+    try {
+      await assertPublicDestination(probe, ctx.config.policy);
+    } catch (err) {
+      throw new ApiError(400, "INVALID_HOST", `This website cannot be used: ${(err as Error).message}`);
+    }
+  }
+
+  const existing = await prisma.verifiedDomain.findFirst({ where: { projectId: input.projectId, hostname, port } });
+  if (existing) throw new ApiError(409, "DOMAIN_EXISTS", "This website is already registered in the project");
+  const attested = input.method === "SELF_ATTESTED";
+  const domain = await prisma.verifiedDomain.create({
+    data: {
+      projectId: input.projectId,
+      hostname,
+      port,
+      allowSubdomains: input.allowSubdomains,
+      method: input.method,
+      scheme: input.scheme,
+      verificationToken: randomToken(18),
+      status: attested ? "ATTESTED" : "PENDING",
+      attestedById: attested ? user.id : null,
+      attestedAt: attested ? new Date() : null,
+    },
+  });
+  await audit(req, attested ? "domain.attested" : "domain.added", {
+    projectId: input.projectId,
+    targetType: "VerifiedDomain",
+    targetId: domain.id,
+    metadata: attested
+      ? { host: input.host, statement: "User confirmed they own this website or have explicit permission to test it" }
+      : { host: input.host },
+  });
+  return domain;
 }
 
 export async function domainRoutes(app: FastifyInstance, ctx: AppContext) {
   app.post("/domains", async (req, reply) => {
     const input = parse(createDomainInput, req.body);
     await requireProjectRole(req, input.projectId, "ADMIN");
-    const [hostname, portStr] = input.host.replace(/\.$/, "").split(":") as [string, string | undefined];
-    const port = portStr ? Number(portStr) : null;
-    if (port !== null && (port < 1 || port > 65535)) throw new ApiError(400, "INVALID_HOST", "Port must be between 1 and 65535");
-    if (port === 80 || port === 443) throw new ApiError(400, "INVALID_HOST", "Omit default ports 80/443");
-
-    const probe = new URL(`${input.scheme}://${hostname}${port ? `:${port}` : ""}/`);
-    const allowlisted = isPrivateAllowlisted(probe, ctx.config.policy);
-    if (METADATA_HOSTNAMES.has(hostname)) throw new ApiError(400, "INVALID_HOST", "Metadata hosts cannot be authorized");
-    if (isIp(hostname) && !allowlisted) throw new ApiError(400, "INVALID_HOST", "Register a hostname, not an IP address");
-    if (!hostname.split(".").every((l) => LABEL.test(l))) throw new ApiError(400, "INVALID_HOST", "Invalid hostname");
-    if (!hostname.includes(".") && !allowlisted) {
-      throw new ApiError(400, "INVALID_HOST", "Single-label hostnames (like localhost) must be allowlisted by an administrator");
-    }
-    if (input.method === "DNS_TXT" && allowlisted && !hostname.includes(".")) {
-      throw new ApiError(400, "INVALID_METHOD", "Use the hosted file method for local development hosts");
-    }
-
-    const existing = await prisma.verifiedDomain.findFirst({ where: { projectId: input.projectId, hostname, port } });
-    if (existing) throw new ApiError(409, "DOMAIN_EXISTS", "This domain is already registered in the project");
-    const domain = await prisma.verifiedDomain.create({
-      data: {
-        projectId: input.projectId,
-        hostname,
-        port,
-        allowSubdomains: input.allowSubdomains,
-        method: input.method,
-        scheme: input.scheme,
-        verificationToken: randomToken(18),
-      },
-    });
-    await audit(req, "domain.added", { projectId: input.projectId, targetType: "VerifiedDomain", targetId: domain.id, metadata: { host: input.host } });
+    const domain = await createDomain(req, ctx, input);
     return reply.status(201).send({ domain: serializeDomain(domain) });
   });
 
@@ -91,14 +140,19 @@ export async function domainRoutes(app: FastifyInstance, ctx: AppContext) {
     if (!domain) throw notFound("Domain");
     await requireProjectRole(req, domain.projectId, "ADMIN");
     if (domain.status === "REVOKED") throw new ApiError(409, "REVOKED", "This domain was revoked; add it again to re-verify");
+    const body = parse(verifyDomainInput, req.body ?? {});
+    const method = body.method ?? (domain.method === "SELF_ATTESTED" ? "HTTP_FILE" : domain.method);
     const result = await verifyDomainOwnership(
-      { hostname: domain.hostname, port: domain.port, scheme: domain.scheme, method: domain.method, token: domain.verificationToken },
+      { hostname: domain.hostname, port: domain.port, scheme: domain.scheme, method, token: domain.verificationToken },
       ctx.config.policy,
     );
+    // A failed check never removes access that was already granted (verified or self-declared).
+    const keep = domain.status === "VERIFIED" || domain.status === "ATTESTED" ? domain.status : "FAILED";
     const updated = await prisma.verifiedDomain.update({
       where: { id },
       data: {
-        status: result.ok ? "VERIFIED" : domain.status === "VERIFIED" ? "VERIFIED" : "FAILED",
+        method: result.ok ? method : domain.method,
+        status: result.ok ? "VERIFIED" : keep,
         verifiedAt: result.ok ? new Date() : domain.verifiedAt,
         lastCheckedAt: new Date(),
         lastCheckError: result.ok ? null : result.detail,

@@ -11,7 +11,7 @@ import type { AppContext } from "../lib/context";
 
 const idParams = z.object({ id: z.string().min(1).max(64) });
 
-function versionData(def: ScenarioDefinition, version: number, userId: string, changeNote?: string) {
+export function versionData(def: ScenarioDefinition, version: number, userId: string, changeNote?: string) {
   return {
     version,
     definition: def as unknown as Prisma.InputJsonValue,

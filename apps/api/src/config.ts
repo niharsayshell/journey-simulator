@@ -21,6 +21,7 @@ export function loadApiConfig(env: Record<string, string | undefined> = process.
       | "open"
       | "closed"
       | "first-user",
+    allowSelfAttested: env.ALLOW_SELF_ATTESTED_DOMAINS !== "false",
     rateLimitPerMinute: Number(env.RATE_LIMIT_PER_MINUTE ?? 300),
     policy: { privateHostAllowlist: parsePrivateHostAllowlist(env.PRIVATE_HOST_ALLOWLIST) },
     limits: limitsFromEnv(env),

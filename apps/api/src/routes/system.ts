@@ -29,6 +29,7 @@ export async function systemRoutes(app: FastifyInstance, ctx: AppContext) {
       limits: ctx.config.limits,
       workerEngines: await workerEngines(ctx),
       privateHostAllowlist: ctx.config.policy.privateHostAllowlist,
+      allowSelfAttested: ctx.config.allowSelfAttested,
       features: {
         stepTypes: IMPLEMENTED_STEP_TYPES,
         plannedStepTypes: PLANNED_STEP_TYPES,

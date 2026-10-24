@@ -384,7 +384,7 @@ export function ScenarioEditor({ draft, onChange, issues }: { draft: ScenarioDra
           <Field label="Name" htmlFor="sc-name">
             <Input id="sc-name" required maxLength={120} value={draft.name} onChange={(e) => onChange({ ...draft, name: e.target.value })} />
           </Field>
-          <Field label="Start URL" htmlFor="sc-start" hint="Must be on a verified domain of this project.">
+          <Field label="Start URL" htmlFor="sc-start" hint="Must be on an authorized website of this project.">
             <Input id="sc-start" value={draft.definition.startUrl} onChange={(e) => setDef({ startUrl: e.target.value })} placeholder="https://shop.example.com/" />
           </Field>
           <Field label="Description" htmlFor="sc-desc" className="sm:col-span-2">

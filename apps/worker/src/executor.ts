@@ -23,6 +23,7 @@ import {
 import {
   collectNavigationUrls,
   IMPLEMENTED_SESSION_MODES,
+  usableDomainStatuses,
   scenarioDefinitionSchema,
   type ErrorCategory,
   type RunStatus,
@@ -137,7 +138,7 @@ export async function executeRun(runId: string, deps: ExecutorDeps): Promise<Exe
       throw new RunSetupError("VALIDATION", `Session mode ${snapshot.sessionMode} is not implemented yet`);
     }
 
-    const domains = await db.verifiedDomain.findMany({ where: { projectId: batch.projectId, status: "VERIFIED" } });
+    const domains = await db.verifiedDomain.findMany({ where: { projectId: batch.projectId, status: { in: usableDomainStatuses(process.env) } } });
     const authorizedHosts: AuthorizedHost[] = domains.map((d) => ({ hostname: d.hostname, port: d.port, allowSubdomains: d.allowSubdomains }));
     for (const u of collectNavigationUrls(definition)) {
       try {

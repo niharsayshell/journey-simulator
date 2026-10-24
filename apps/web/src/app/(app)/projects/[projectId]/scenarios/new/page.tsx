@@ -14,7 +14,7 @@ export default function NewScenarioPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const router = useRouter();
   const { data: domains } = useApi<Paginated<Domain>>(`/domains?projectId=${projectId}&limit=100`);
-  const verified = domains?.items.filter((d) => d.status === "VERIFIED") ?? [];
+  const verified = domains?.items.filter((d) => (d.status === "VERIFIED" || d.status === "ATTESTED")) ?? [];
   const firstOrigin = verified[0] ? `${verified[0].scheme}://${verified[0].host}/` : "https://";
   const [draft, setDraft] = useState<ScenarioDraft | null>(null);
   const [issues, setIssues] = useState<Array<{ path: string; message: string }>>([]);
@@ -61,8 +61,8 @@ export default function NewScenarioPage() {
         }
       />
       {domains && verified.length === 0 && (
-        <Alert variant="warning" title="No verified domains" className="mb-4">
-          Scenarios can only target verified domains. Authorize a website first.
+        <Alert variant="warning" title="No authorized websites" className="mb-4">
+          Scenarios can only target authorized websites. Add one under Website authorization first.
         </Alert>
       )}
       <div className="mb-4">

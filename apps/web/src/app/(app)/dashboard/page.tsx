@@ -10,6 +10,7 @@ import { EmptyState, ErrorAlert, Skeleton } from "@/components/ui/feedback";
 import { StatusBadge } from "@/components/status";
 import { relativeTime } from "@/lib/utils";
 import { useAuth } from "@/components/auth";
+import { QuickStart } from "@/components/quick-start";
 
 function RecentBatches({ project }: { project: Project }) {
   const { data } = useApi<Paginated<Batch>>(`/batches?projectId=${project.id}&limit=5`, { refreshInterval: 5000 });
@@ -54,6 +55,7 @@ export default function DashboardPage() {
           </Button>
         }
       />
+      <QuickStart className="mb-6" />
       <ErrorAlert error={error} />
       {isLoading && (
         <div className="grid gap-4 md:grid-cols-2">
@@ -65,7 +67,7 @@ export default function DashboardPage() {
         <div className="space-y-6">
           <EmptyState
             icon={FolderKanban}
-            title="Create your first project"
+            title="Or create an empty project"
             description="A project groups the websites you are authorized to test, your scenarios and their execution history."
             action={
               <Button asChild>
@@ -81,8 +83,8 @@ export default function DashboardPage() {
               <div className="flex gap-3">
                 <ShieldCheck className="size-5 shrink-0 text-primary" />
                 <div>
-                  <p className="font-medium">1. Authorize a website</p>
-                  <p className="text-muted-foreground">Prove ownership with a DNS TXT record or a hosted file. The bundled Demo Shop runs on localhost:4100.</p>
+                  <p className="font-medium">1. Add a website</p>
+                  <p className="text-muted-foreground">Paste its address above and confirm you may test it. Optionally prove ownership with DNS or a hosted file.</p>
                 </div>
               </div>
               <div className="flex gap-3">

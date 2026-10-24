@@ -208,6 +208,17 @@ describe("repeated execution", () => {
   });
 });
 
+describe("quick start", () => {
+  it("runs the starter scenario of a self-declared website end to end", async () => {
+    const qs = await c.post("/quick-start", { url: `localhost:${sitePort}`, attestation: true });
+    expect(qs.status, JSON.stringify(qs.body)).toBe(201);
+    const r = await c.post("/batches", { scenarioId: qs.body.scenarioId, iterations: 2, concurrency: 2 });
+    expect(r.status, JSON.stringify(r.body)).toBe(201);
+    const result = await waitForBatch(r.body.batch.id);
+    expect(result.counts).toMatchObject({ passed: 2, total: 2 });
+  });
+});
+
 describe("network guard compatibility", () => {
   it("completes the sandbox checkout (form POST + same-site 303 redirect)", async () => {
     const scenarioId = await createScenario("checkout", [

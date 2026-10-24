@@ -80,6 +80,7 @@ All endpoints use JSON. Errors look like `{ "error": { "code", "message", "detai
 | `GET /artifacts/:id/content` | VIEWER | streamed after an access check; storage keys are never exposed |
 | `GET /reports?batchId&format=json|csv&level=runs|steps` | VIEWER | |
 | `GET /events/stream?projectId&batchId?` | VIEWER | Server-Sent Events |
+| `POST /quick-start` `{ url, projectName?, attestation: true }` | any user | creates project, self-declared website and starter scenario |
 | `GET /health`, `GET /system/info` | — / any user | |
 
 Example batch request:
@@ -92,7 +93,7 @@ POST /api/v1/batches
 
 ## Security model
 
-* **Authorization of targets.** A domain becomes usable only after ownership is proven: a TXT record at `_journey-simulator.<host>` or the file `/.well-known/journey-simulator-verification.txt`. Authorization is per hostname, with optional subdomains, and per port (a registered port must match exactly; otherwise only 80/443). Checks run when a scenario is saved, when a batch is created (including DNS), **again in the worker before every run**, and on **every browser request**.
+* **Authorization of targets.** A domain becomes usable either on the user's recorded declaration that they own it or have permission (`ATTESTED`, stored with who and when, audited, and disabled when `ALLOW_SELF_ATTESTED_DOMAINS=false`; the host must also resolve to a public address) or after ownership is proven (`VERIFIED`): a TXT record at `_journey-simulator.<host>` or the file `/.well-known/journey-simulator-verification.txt`. Authorization is per hostname, with optional subdomains, and per port (a registered port must match exactly; otherwise only 80/443). Checks run when a scenario is saved, when a batch is created (including DNS), **again in the worker before every run**, and on **every browser request**.
 * **SSRF.** Only http(s) URLs are allowed; URLs with embedded credentials are rejected. Hostnames are resolved and every address must be public (private, loopback, link-local, CGNAT, ULA and IPv4-mapped ranges are blocked). Cloud metadata IPs and hostnames are always blocked. Development hosts are allowed only through the administrator setting `PRIVATE_HOST_ALLOWLIST`.
 * **Redirects and off-site navigation.** Browsers follow redirects internally, so the network guard fetches each request with redirects disabled and validates the `Location` before the browser may follow it. Top-level navigation to unauthorized hosts fails the run with `SECURITY`. Third-party sub-resources (CDNs) may be allowed with `ALLOW_THIRD_PARTY_SUBRESOURCES`, but they are still SSRF-checked. Service workers are blocked so that no request bypasses interception.
 * **Verification fetches** use a DNS lookup hook that validates the IP actually connected to (no rebinding), never follow redirects, and read at most 1 KB.

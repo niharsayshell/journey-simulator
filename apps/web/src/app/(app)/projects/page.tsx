@@ -14,6 +14,7 @@ import { EmptyState, ErrorAlert, Spinner } from "@/components/ui/feedback";
 import { Badge } from "@/components/ui/badge";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { formatDate } from "@/lib/utils";
+import { QuickStart } from "@/components/quick-start";
 
 export default function ProjectsPage() {
   const router = useRouter();
@@ -39,6 +40,7 @@ export default function ProjectsPage() {
   return (
     <>
       <PageHeader title="Projects" description="Each project has its own authorized websites, scenarios, profiles and history." />
+      <QuickStart className="mb-6" />
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <Card>
           <CardContent className="p-0">
@@ -86,7 +88,7 @@ export default function ProjectsPage() {
         </Card>
         <Card className="h-fit">
           <CardHeader>
-            <CardTitle>New project</CardTitle>
+            <CardTitle>Empty project</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={create} className="space-y-4">

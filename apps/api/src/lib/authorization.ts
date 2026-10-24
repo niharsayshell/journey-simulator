@@ -1,9 +1,9 @@
 import { prisma } from "@js/database";
 import { assertNavigationAllowed, matchesAuthorizedHost, parseTargetUrl, UrlPolicyError, type AuthorizedHost, type NetworkPolicy } from "@js/security";
-import { collectNavigationUrls, type ScenarioDefinition } from "@js/shared";
+import { collectNavigationUrls, usableDomainStatuses, type ScenarioDefinition } from "@js/shared";
 
 export async function loadAuthorizedHosts(projectId: string): Promise<AuthorizedHost[]> {
-  const domains = await prisma.verifiedDomain.findMany({ where: { projectId, status: "VERIFIED" } });
+  const domains = await prisma.verifiedDomain.findMany({ where: { projectId, status: { in: usableDomainStatuses(process.env) } } });
   return domains.map((d) => ({ hostname: d.hostname, port: d.port, allowSubdomains: d.allowSubdomains }));
 }
 
@@ -31,7 +31,7 @@ export async function checkScenarioTargets(
       if (resolveDns) await assertNavigationAllowed(url, hosts, policy);
       else {
         const u = parseTargetUrl(url);
-        if (!matchesAuthorizedHost(u, hosts)) throw new UrlPolicyError(`${u.host} is not a verified domain of this project`, "UNAUTHORIZED_HOST");
+        if (!matchesAuthorizedHost(u, hosts)) throw new UrlPolicyError(`${u.host} is not an authorized website of this project`, "UNAUTHORIZED_HOST");
       }
     } catch (err) {
       issues.push({ path: paths[i] ?? "startUrl", message: err instanceof Error ? err.message : String(err) });

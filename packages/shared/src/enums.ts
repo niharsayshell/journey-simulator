@@ -38,8 +38,18 @@ export const IMPLEMENTED_SESSION_MODES: readonly SessionMode[] = ["FRESH_SESSION
 export const PROJECT_ROLES = ["OWNER", "ADMIN", "MEMBER", "VIEWER"] as const;
 export type ProjectRole = (typeof PROJECT_ROLES)[number];
 
-export const VERIFICATION_METHODS = ["DNS_TXT", "HTTP_FILE"] as const;
+export const VERIFICATION_METHODS = ["DNS_TXT", "HTTP_FILE", "SELF_ATTESTED"] as const;
 export type VerificationMethod = (typeof VERIFICATION_METHODS)[number];
 
-export const DOMAIN_STATUSES = ["PENDING", "VERIFIED", "FAILED", "REVOKED"] as const;
+export const DOMAIN_STATUSES = ["PENDING", "VERIFIED", "ATTESTED", "FAILED", "REVOKED"] as const;
+/** Statuses that make a domain usable as an automation target. */
+export const USABLE_DOMAIN_STATUSES = ["VERIFIED", "ATTESTED"] as const;
 export type DomainStatus = (typeof DOMAIN_STATUSES)[number];
+
+/**
+ * Domain statuses accepted as targets. Self-declared (ATTESTED) domains can be
+ * switched off by an administrator with ALLOW_SELF_ATTESTED_DOMAINS=false.
+ */
+export function usableDomainStatuses(env: Record<string, string | undefined>): DomainStatus[] {
+  return env.ALLOW_SELF_ATTESTED_DOMAINS === "false" ? ["VERIFIED"] : ["VERIFIED", "ATTESTED"];
+}
