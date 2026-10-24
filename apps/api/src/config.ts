@@ -16,7 +16,11 @@ export function loadApiConfig(env: Record<string, string | undefined> = process.
     encryptionKey: required("ENCRYPTION_KEY"),
     sessionTtlHours: Number(env.SESSION_TTL_HOURS ?? 24 * 7),
     cookieSecure: env.COOKIE_SECURE === "true",
-    allowRegistration: env.ALLOW_REGISTRATION !== "false",
+    /** "true" (anyone), "false" (nobody), or "first-user" (only until the first account exists). */
+    registration: (env.ALLOW_REGISTRATION === "false" ? "closed" : env.ALLOW_REGISTRATION === "first-user" ? "first-user" : "open") as
+      | "open"
+      | "closed"
+      | "first-user",
     rateLimitPerMinute: Number(env.RATE_LIMIT_PER_MINUTE ?? 300),
     policy: { privateHostAllowlist: parsePrivateHostAllowlist(env.PRIVATE_HOST_ALLOWLIST) },
     limits: limitsFromEnv(env),

@@ -104,10 +104,10 @@ function DomainCard({ d, onChange }: { d: Domain; onChange: () => void }) {
               <CopyValue value={d.instructions.file.url} />
               <p>containing exactly:</p>
               <CopyValue value={d.instructions.file.contents} />
-              {["localhost", "demo-site"].includes(d.hostname) && (
+              {(["localhost", "demo-site"].includes(d.hostname) || d.hostname.startsWith("demo.")) && (
                 <p className="text-xs text-muted-foreground">
                   Using the bundled Demo Shop? Open{" "}
-                  <a className="underline" href={`http://localhost:${d.port ?? 4100}/owner`} target="_blank" rel="noreferrer">
+                  <a className="underline" href={d.hostname.startsWith("demo.") ? `${d.scheme}://${d.host}/owner` : `http://localhost:${d.port ?? 4100}/owner`} target="_blank" rel="noreferrer">
                     its owner page
                   </a>{" "}
                   and paste the value to publish it.

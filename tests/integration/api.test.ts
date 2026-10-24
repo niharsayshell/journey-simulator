@@ -62,6 +62,18 @@ describe("authentication", () => {
     expect(r.body).toEqual({ error: { code: "INVALID_CREDENTIALS", message: "Incorrect email or password" } });
   });
 
+  it("closes sign-up after the first account in first-user mode", async () => {
+    const locked = await createTestApp({ ALLOW_REGISTRATION: "first-user" });
+    try {
+      await registerUser(new Client(locked));
+      const r = await new Client(locked).post("/auth/register", { email: "late@example.com", password: "correct-horse-battery" });
+      expect(r.status).toBe(403);
+      expect(r.body.error.code).toBe("REGISTRATION_DISABLED");
+    } finally {
+      await locked.close();
+    }
+  });
+
   it("requires authentication for project data", async () => {
     expect((await new Client(t).get("/projects")).status).toBe(401);
   });

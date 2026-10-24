@@ -15,7 +15,9 @@ export async function authRoutes(app: FastifyInstance, ctx: AppContext) {
   const strict = { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } };
 
   app.post("/auth/register", strict, async (req, reply) => {
-    if (!ctx.config.allowRegistration) throw new ApiError(403, "REGISTRATION_DISABLED", "Self-service registration is disabled");
+    const closed =
+      ctx.config.registration === "closed" || (ctx.config.registration === "first-user" && (await prisma.user.count()) > 0);
+    if (closed) throw new ApiError(403, "REGISTRATION_DISABLED", "Sign-up is closed on this installation. Ask the administrator for an account.");
     const input = parse(registerInput, req.body);
     const existing = await prisma.user.findUnique({ where: { email: input.email } });
     if (existing) throw new ApiError(409, "EMAIL_TAKEN", "An account with this email already exists");

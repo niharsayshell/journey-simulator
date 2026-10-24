@@ -1,0 +1,9 @@
+# Automatic HTTPS certificates from Let's Encrypt.
+{$APP_HOST} {
+	encode gzip
+	reverse_proxy web:3000
+}
+
+demo.{$APP_HOST} {
+	reverse_proxy demo-site:4100
+}

@@ -26,6 +26,10 @@ This is the **first delivery**: Phase 1 (foundation) plus the basic execution pa
 | CONDITION, LOOP, END, ASSERT_RESPONSE, drag-and-drop, record & replay | ⏳ Phase 5 |
 | Scheduling, retention clean-up job, team management UI, monitoring/alerts | ⏳ Phase 6 |
 
+## Go live on a server
+
+Non-technical step-by-step guide: **[GO-LIVE.md](GO-LIVE.md)**. One command installs everything on a fresh Ubuntu server with automatic HTTPS.
+
 ## Quick start (local, without Docker)
 
 Requirements: Node 22+, pnpm 10, PostgreSQL 16, Redis 7, and a Playwright Chromium (`npx playwright install chromium` if you don't have one).

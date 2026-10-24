@@ -21,7 +21,7 @@ export default function NewScenarioPage() {
   const [error, setError] = useState<unknown>(null);
   const [saving, setSaving] = useState(false);
   const current = draft ?? starterScenario(firstOrigin);
-  const demoDomain = verified.find((d) => ["localhost", "127.0.0.1", "demo-site"].includes(d.hostname));
+  const demoDomain = verified.find((d) => ["localhost", "127.0.0.1", "demo-site"].includes(d.hostname) || d.hostname.startsWith("demo."));
 
   async function save() {
     const v = validateDraft(current);
