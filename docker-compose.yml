@@ -1,0 +1,79 @@
+# Local development stack. Usage:
+#   cp .env.example .env   # set ENCRYPTION_KEY (openssl rand -base64 32)
+#   docker compose up --build
+# Web UI: http://localhost:3000   Demo Shop: http://localhost:4100
+x-app-env: &app-env
+  DATABASE_URL: postgresql://journey:journey@postgres:5432/journey
+  REDIS_URL: redis://redis:6379
+  ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Set ENCRYPTION_KEY in .env}
+  STORAGE_DRIVER: local
+  STORAGE_LOCAL_DIR: /data/artifacts
+  # The demo site is reached by the worker as demo-site:4100; the test proxy as test-proxy:8899.
+  PRIVATE_HOST_ALLOWLIST: demo-site:4100,test-proxy:8899
+  PROXY_CHECK_URL: http://demo-site:4100/whoami
+  LOG_LEVEL: info
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment: { POSTGRES_USER: journey, POSTGRES_PASSWORD: journey, POSTGRES_DB: journey }
+    volumes: [pgdata:/var/lib/postgresql/data]
+    ports: ["5432:5432"]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U journey"], interval: 3s, retries: 20 }
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 3s, retries: 20 }
+
+  migrate:
+    build: { context: ., dockerfile: infrastructure/docker/node.Dockerfile }
+    environment: *app-env
+    command: ["sh", "-c", "cd packages/database && npx prisma migrate deploy"]
+    depends_on: { postgres: { condition: service_healthy } }
+
+  api:
+    build: { context: ., dockerfile: infrastructure/docker/node.Dockerfile }
+    environment:
+      <<: *app-env
+      API_HOST: 0.0.0.0
+      API_PORT: 4000
+      APP_ORIGIN: http://localhost:3000
+    command: ["pnpm", "--filter", "@js/api", "start"]
+    volumes: [artifacts:/data/artifacts]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  worker:
+    build: { context: ., dockerfile: infrastructure/docker/worker.Dockerfile }
+    environment: { <<: *app-env, WORKER_CONCURRENCY: 2 }
+    volumes: [artifacts:/data/artifacts]
+    shm_size: 1gb
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    # Scale browsers independently: docker compose up --scale worker=3
+
+  web:
+    build: { context: ., dockerfile: infrastructure/docker/node.Dockerfile, args: { BUILD_WEB: "true" } }
+    environment: { API_INTERNAL_URL: http://api:4000 }
+    command: ["pnpm", "--filter", "@js/web", "start"]
+    ports: ["3000:3000"]
+    depends_on: [api]
+
+  demo-site:
+    build: { context: ., dockerfile: infrastructure/docker/node.Dockerfile }
+    environment: { DEMO_SITE_HOST: 0.0.0.0, DEMO_SITE_PORT: 4100 }
+    command: ["pnpm", "--filter", "@js/demo-site", "start"]
+    ports: ["4100:4100"]
+
+  test-proxy:
+    build: { context: ., dockerfile: infrastructure/docker/node.Dockerfile }
+    environment: { DEV_PROXY_PORT: 8899, DEV_PROXY_HOST: 0.0.0.0 }
+    command: ["npx", "tsx", "tests/fixtures/dev-proxy.ts"]
+    profiles: ["proxy"]
+
+volumes:
+  pgdata:
+  artifacts:

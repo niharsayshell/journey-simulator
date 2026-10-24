@@ -1,0 +1,51 @@
+{
+  "name": "journey-simulator",
+  "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "pnpm --filter @js/web build",
+    "dev": "pnpm --parallel --filter @js/api --filter @js/worker --filter @js/web --filter @js/demo-site dev",
+    "db:generate": "pnpm --filter @js/database generate",
+    "db:migrate": "pnpm --filter @js/database migrate:deploy",
+    "db:migrate:dev": "pnpm --filter @js/database migrate:dev",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run --project unit",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:e2e": "vitest run --project e2e",
+    "test:all": "vitest run",
+    "dev:proxy": "tsx tests/fixtures/dev-proxy.ts"
+  },
+  "devDependencies": {
+    "@js/browser-engine": "workspace:*",
+    "@js/database": "workspace:*",
+    "@js/queue": "workspace:*",
+    "@js/reporting": "workspace:*",
+    "@js/scenario-engine": "workspace:*",
+    "@js/security": "workspace:*",
+    "@js/shared": "workspace:*",
+    "@js/storage": "workspace:*",
+    "@types/node": "22.20.5",
+    "bullmq": "5.81.5",
+    "dotenv": "16.4.7",
+    "pino": "9.6.0",
+    "playwright": "1.63.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "esbuild",
+      "msgpackr-extract",
+      "sharp",
+      "unrs-resolver"
+    ]
+  }
+}

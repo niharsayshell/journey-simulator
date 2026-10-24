@@ -1,0 +1,496 @@
+// Journey Simulator database schema.
+//
+// Sensitive material (proxy passwords, browser storage states, test-account
+// credentials) is never stored on ordinary rows. It lives encrypted in
+// `EncryptedSecret`, referenced by id, and API queries never select it.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProjectRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum VerificationMethod {
+  DNS_TXT
+  HTTP_FILE
+}
+
+enum DomainStatus {
+  PENDING
+  VERIFIED
+  FAILED
+  REVOKED
+}
+
+enum BrowserEngine {
+  chromium
+  firefox
+  webkit
+}
+
+enum ProxyType {
+  HTTP
+  HTTPS
+  SOCKS5
+}
+
+enum SessionMode {
+  FRESH_SESSION
+  RETURNING_SESSION
+  AUTHENTICATED_TEST_ACCOUNT
+  MULTI_ACCOUNT_TEST
+}
+
+enum BatchStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLING
+  CANCELLED
+}
+
+enum RunStatus {
+  QUEUED
+  DISPATCHED
+  RUNNING
+  PASSED
+  FAILED
+  CANCELLED
+  TIMED_OUT
+}
+
+enum StepStatus {
+  PASSED
+  FAILED
+  SKIPPED
+  CANCELLED
+}
+
+enum ErrorCategory {
+  INFRASTRUCTURE
+  NETWORK
+  SITE_ERROR
+  ASSERTION
+  TIMEOUT
+  SECURITY
+  CANCELLED
+  VALIDATION
+}
+
+enum ArtifactKind {
+  SCREENSHOT
+  TRACE
+  LOG
+}
+
+enum SecretKind {
+  PROXY_CREDENTIALS
+  STORAGE_STATE
+  TEST_ACCOUNT_CREDENTIALS
+}
+
+model User {
+  id           String              @id @default(cuid())
+  email        String              @unique
+  name         String?
+  passwordHash String
+  isAdmin      Boolean             @default(false)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  memberships  ProjectMembership[]
+  sessions     AuthSession[]
+  auditLogs    AuditLog[]
+  batches      TestBatch[]
+}
+
+/// Server-side login session. Only a SHA-256 hash of the cookie token is stored.
+model AuthSession {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  userAgent String?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Project {
+  id               String              @id @default(cuid())
+  name             String
+  description      String?
+  /// Header added to requests sent to authorized hosts so synthetic traffic can be filtered from analytics.
+  testHeaderEnabled Boolean            @default(true)
+  testHeaderName   String              @default("X-Journey-Simulator")
+  testHeaderValue  String              @default("synthetic")
+  /// Days to keep artifacts before the retention job deletes them.
+  artifactRetentionDays Int            @default(14)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  memberships      ProjectMembership[]
+  domains          VerifiedDomain[]
+  scenarios        Scenario[]
+  browserProfiles  BrowserProfile[]
+  sessionProfiles  SessionProfile[]
+  testAccounts     TestAccount[]
+  proxyProfiles    ProxyProfile[]
+  batches          TestBatch[]
+  scheduledTasks   ScheduledTask[]
+  auditLogs        AuditLog[]
+  secrets          EncryptedSecret[]
+}
+
+model ProjectMembership {
+  id        String      @id @default(cuid())
+  projectId String
+  userId    String
+  role      ProjectRole @default(MEMBER)
+  createdAt DateTime    @default(now())
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+}
+
+model VerifiedDomain {
+  id                String             @id @default(cuid())
+  projectId         String
+  project           Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  hostname          String
+  /// When set, only this exact port is authorized; when null only the default port of the scheme.
+  port              Int?
+  allowSubdomains   Boolean            @default(false)
+  method            VerificationMethod
+  scheme            String             @default("https")
+  verificationToken String
+  status            DomainStatus       @default(PENDING)
+  verifiedAt        DateTime?
+  lastCheckedAt     DateTime?
+  lastCheckError    String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@unique([projectId, hostname, port])
+  @@index([projectId, status])
+}
+
+model Scenario {
+  id             String            @id @default(cuid())
+  projectId      String
+  project        Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  latestVersion  Int               @default(1)
+  archivedAt     DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  versions       ScenarioVersion[]
+  batches        TestBatch[]
+  scheduledTasks ScheduledTask[]
+
+  @@index([projectId, updatedAt])
+}
+
+/// Immutable snapshot of a scenario definition. Runs always reference a version.
+model ScenarioVersion {
+  id          String         @id @default(cuid())
+  scenarioId  String
+  scenario    Scenario       @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  version     Int
+  /// Validated ScenarioDefinition JSON (startUrl, settings, steps).
+  definition  Json
+  startUrl    String
+  changeNote  String?
+  createdById String?
+  createdAt   DateTime       @default(now())
+  steps       ScenarioStep[]
+  batches     TestBatch[]
+
+  @@unique([scenarioId, version])
+}
+
+/// Normalized copy of each step of a version, for querying and reporting.
+model ScenarioStep {
+  id                String          @id @default(cuid())
+  scenarioVersionId String
+  scenarioVersion   ScenarioVersion @relation(fields: [scenarioVersionId], references: [id], onDelete: Cascade)
+  index             Int
+  stepKey           String
+  type              String
+  label             String?
+  config            Json
+
+  @@unique([scenarioVersionId, index])
+}
+
+model BrowserProfile {
+  id             String        @id @default(cuid())
+  projectId      String
+  project        Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name           String
+  engine         BrowserEngine @default(chromium)
+  devicePreset   String?
+  viewportWidth  Int           @default(1366)
+  viewportHeight Int           @default(768)
+  isMobile       Boolean       @default(false)
+  userAgent      String?
+  locale         String        @default("en-US")
+  timezone       String        @default("UTC")
+  colorScheme    String        @default("light")
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  batches        TestBatch[]
+  sessionProfiles SessionProfile[]
+
+  @@index([projectId])
+}
+
+/// Browser state profile for RETURNING_SESSION / AUTHENTICATED_TEST_ACCOUNT modes (Phase 3+).
+model SessionProfile {
+  id                    String          @id @default(cuid())
+  projectId             String
+  project               Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name                  String
+  mode                  SessionMode     @default(FRESH_SESSION)
+  browserProfileId      String?
+  browserProfile        BrowserProfile? @relation(fields: [browserProfileId], references: [id], onDelete: SetNull)
+  geolocationLatitude   Float?
+  geolocationLongitude  Float?
+  /// EncryptedSecret holding the Playwright storageState JSON.
+  storageStateSecretId  String?         @unique
+  storageStateSecret    EncryptedSecret? @relation("SessionStorageState", fields: [storageStateSecretId], references: [id], onDelete: SetNull)
+  testAccountId         String?
+  testAccount           TestAccount?    @relation(fields: [testAccountId], references: [id], onDelete: SetNull)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  batches               TestBatch[]
+
+  @@index([projectId])
+}
+
+/// Pre-provisioned QA account on a site the project controls (Phase 3+).
+model TestAccount {
+  id                String           @id @default(cuid())
+  projectId         String
+  project           Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  label             String
+  usernameHint      String?
+  credentialSecretId String?         @unique
+  credentialSecret  EncryptedSecret? @relation("TestAccountCredentials", fields: [credentialSecretId], references: [id], onDelete: SetNull)
+  /// Run currently holding this account in MULTI_ACCOUNT_TEST mode.
+  leasedByRunId     String?
+  leaseExpiresAt    DateTime?
+  createdAt         DateTime         @default(now())
+  sessionProfiles   SessionProfile[]
+
+  @@index([projectId])
+}
+
+model ProxyProfile {
+  id                 String           @id @default(cuid())
+  projectId          String
+  project            Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name               String
+  type               ProxyType        @default(HTTP)
+  host               String
+  port               Int
+  /// Non-secret indicator for the UI.
+  hasCredentials     Boolean          @default(false)
+  credentialSecretId String?          @unique
+  credentialSecret   EncryptedSecret? @relation("ProxyCredentials", fields: [credentialSecretId], references: [id], onDelete: SetNull)
+  regionLabel        String?
+  lastTestAt         DateTime?
+  lastTestOk         Boolean?
+  lastEgressIp       String?
+  lastLatencyMs      Int?
+  lastTestError      String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  batches            TestBatch[]
+
+  @@index([projectId])
+}
+
+/// AES-256-GCM encrypted blob. Never returned by the API.
+model EncryptedSecret {
+  id             String          @id @default(cuid())
+  projectId      String
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  kind           SecretKind
+  /// base64(iv | authTag | ciphertext), key version for rotation.
+  ciphertext     String
+  keyVersion     Int             @default(1)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  proxyProfile   ProxyProfile?   @relation("ProxyCredentials")
+  sessionProfile SessionProfile? @relation("SessionStorageState")
+  testAccount    TestAccount?    @relation("TestAccountCredentials")
+
+  @@index([projectId])
+}
+
+model TestBatch {
+  id                String          @id @default(cuid())
+  projectId         String
+  project           Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scenarioId        String
+  scenario          Scenario        @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  scenarioVersionId String
+  scenarioVersion   ScenarioVersion @relation(fields: [scenarioVersionId], references: [id])
+  browserProfileId  String?
+  browserProfile    BrowserProfile? @relation(fields: [browserProfileId], references: [id], onDelete: SetNull)
+  proxyProfileId    String?
+  proxyProfile      ProxyProfile?   @relation(fields: [proxyProfileId], references: [id], onDelete: SetNull)
+  sessionProfileId  String?
+  sessionProfile    SessionProfile? @relation(fields: [sessionProfileId], references: [id], onDelete: SetNull)
+  sessionMode       SessionMode     @default(FRESH_SESSION)
+  createdById       String?
+  createdBy         User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  status            BatchStatus     @default(QUEUED)
+  iterations        Int
+  concurrency       Int
+  launchDelayMs     Int             @default(0)
+  maxFailures       Int             @default(0)
+  captureTrace      Boolean         @default(false)
+  /// Snapshot of browser/network configuration at creation, so reports stay accurate if profiles change.
+  configSnapshot    Json
+  cancelReason      String?
+  /// Earliest time the next run of this batch may launch (enforces launchDelayMs).
+  nextLaunchAt      DateTime?
+  scheduledTaskId   String?
+  scheduledTask     ScheduledTask?  @relation(fields: [scheduledTaskId], references: [id], onDelete: SetNull)
+  createdAt         DateTime        @default(now())
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  runs              TestRun[]
+
+  @@index([projectId, createdAt])
+  @@index([status])
+}
+
+model TestRun {
+  id              String         @id @default(cuid())
+  batchId         String
+  batch           TestBatch      @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  /// 1-based position of this iteration in its batch.
+  iteration       Int
+  status          RunStatus      @default(QUEUED)
+  /// Hostname of the scenario start URL; used for per-domain concurrency limits.
+  targetHost      String
+  workerId        String?
+  attempt         Int            @default(0)
+  heartbeatAt     DateTime?
+  dispatchedAt    DateTime?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  durationMs      Int?
+  errorCategory   ErrorCategory?
+  errorMessage    String?
+  finalUrl        String?
+  /// Ordered list of top-level document URLs visited.
+  navigationUrls  Json?
+  /// Observed browser/network facts (actual engine version, user agent, egress IP).
+  observed        Json?
+  cancelRequested Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+  steps           StepResult[]
+  artifacts       Artifact[]
+
+  @@unique([batchId, iteration])
+  @@index([batchId, status])
+  @@index([status, heartbeatAt])
+  @@index([targetHost, status])
+}
+
+model StepResult {
+  id            String         @id @default(cuid())
+  runId         String
+  run           TestRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  stepIndex     Int
+  stepKey       String
+  type          String
+  label         String?
+  status        StepStatus
+  attempts      Int            @default(1)
+  startedAt     DateTime
+  finishedAt    DateTime
+  durationMs    Int
+  url           String?
+  errorCategory ErrorCategory?
+  errorMessage  String?
+  /// Assertion details: expected / actual.
+  detail        Json?
+  artifacts     Artifact[]
+
+  @@unique([runId, stepIndex])
+}
+
+model Artifact {
+  id           String       @id @default(cuid())
+  runId        String
+  run          TestRun      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  stepResultId String?
+  stepResult   StepResult?  @relation(fields: [stepResultId], references: [id], onDelete: SetNull)
+  kind         ArtifactKind
+  storageKey   String       @unique
+  contentType  String
+  sizeBytes    Int
+  createdAt    DateTime     @default(now())
+  expiresAt    DateTime?
+
+  @@index([runId])
+  @@index([expiresAt])
+}
+
+/// Future execution of a batch configuration (Phase 6).
+model ScheduledTask {
+  id          String      @id @default(cuid())
+  projectId   String
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scenarioId  String
+  scenario    Scenario    @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  name        String
+  cron        String?
+  runAt       DateTime?
+  batchConfig Json
+  enabled     Boolean     @default(true)
+  lastRunAt   DateTime?
+  nextRunAt   DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  batches     TestBatch[]
+
+  @@index([enabled, nextRunAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  projectId  String?
+  project    Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String
+  targetType String?
+  targetId   String?
+  /// Non-sensitive metadata only.
+  metadata   Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([projectId, createdAt])
+  @@index([userId, createdAt])
+}

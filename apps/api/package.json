@@ -1,0 +1,25 @@
+{
+  "name": "@js/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@fastify/cookie": "11.0.2",
+    "@fastify/helmet": "13.0.1",
+    "@fastify/rate-limit": "10.3.0",
+    "@js/browser-engine": "workspace:*",
+    "@js/database": "workspace:*",
+    "@js/queue": "workspace:*",
+    "@js/reporting": "workspace:*",
+    "@js/security": "workspace:*",
+    "@js/shared": "workspace:*",
+    "@js/storage": "workspace:*",
+    "fastify": "5.6.1",
+    "zod": "3.25.76"
+  }
+}
