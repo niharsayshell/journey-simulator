@@ -147,6 +147,10 @@ describe("repeated execution", () => {
       expect(steps.map((s: { status: string }) => s.status)).toEqual(Array(5).fill("PASSED"));
       const detail = (await c.get(`/runs/${run.id}`)).body.run;
       expect(detail.observed.engine).toBe("chromium");
+      // The demo page's GA4-style tag fired and was accepted.
+      expect(detail.observed.analytics).toContainEqual(
+        expect.objectContaining({ vendor: "GA4", id: "G-DEMO000001", events: ["page_view"], status: 204, outcome: "sent" }),
+      );
       expect(detail.navigationUrls[0]).toBe(`${origin}/products/echo-speaker`);
       const artifacts = (await c.get(`/runs/${run.id}/artifacts`)).body.items;
       const shot = artifacts.find((a: { kind: string }) => a.kind === "SCREENSHOT");

@@ -177,6 +177,7 @@ export interface RunDetail extends RunSummary {
     viewport: { width: number; height: number } | null;
     proxy: { server: string; regionLabel: string | null } | null;
     blockedRequests?: Array<{ url: string; reason: string; isNavigation: boolean }>;
+    analytics?: AnalyticsHit[];
   } | null;
   batch: {
     id: string;
@@ -191,4 +192,15 @@ export interface RunDetail extends RunSummary {
 export interface Paginated<T> {
   items: T[];
   nextCursor: string | null;
+}
+
+export interface AnalyticsHit {
+  vendor: "GA4" | "UNIVERSAL_ANALYTICS" | "GOOGLE_TAG" | "META_PIXEL" | "MICROSOFT_CLARITY";
+  id?: string;
+  events: string[];
+  page?: string;
+  host: string;
+  status: number;
+  outcome: "sent" | "failed" | "blocked";
+  at: string;
 }

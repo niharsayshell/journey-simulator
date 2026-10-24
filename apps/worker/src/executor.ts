@@ -311,6 +311,7 @@ export async function executeRun(runId: string, deps: ExecutorDeps): Promise<Exe
             ...session.observed,
             proxy: snapshot.proxy ? { server: `${snapshot.proxy.host}:${snapshot.proxy.port}`, regionLabel: snapshot.proxy.regionLabel } : null,
             blockedRequests: session.guard.blocked.slice(0, 50),
+            analytics: JSON.parse(JSON.stringify(session.guard.analytics)) as object[],
           }
         : undefined,
     },

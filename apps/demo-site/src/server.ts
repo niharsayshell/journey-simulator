@@ -45,7 +45,10 @@ function saveCart(c){localStorage.setItem('cart',JSON.stringify(c));var el=docum
 <header><span class="brand">Demo Shop</span><nav aria-label="Main"><a href="/">Home</a> · <a href="/products">Products</a> · <a href="/cart">Cart (<span data-testid="cart-count">0</span>)</a></nav></header>
 <main>${body}</main>
 <footer id="footer">Demo Shop is a bundled test site for Journey Simulator.</footer>
-<script>saveCart(cart());</script></body></html>`;
+<script>saveCart(cart());
+// Demo analytics tag: a GA4-style page_view hit to a first-party collector (like server-side tagging).
+try{navigator.sendBeacon('/g/collect?v=2&tid=G-DEMO000001&en=page_view&dl='+encodeURIComponent(location.href))}catch(e){}
+</script></body></html>`;
 }
 
 const pages = {
@@ -203,6 +206,11 @@ export function createDemoSite(opts: DemoSiteOptions = {}) {
           JSON.stringify({ ip: req.socket.remoteAddress?.replace(/^::ffff:/, ""), testHeader: req.headers[testHeader] ?? null }),
           "application/json",
         );
+      }
+      if (req.method === "POST" && p === "/g/collect") {
+        await readBody(req).catch(() => "");
+        res.writeHead(204);
+        return res.end();
       }
       if (req.method === "GET" && p === "/api/analytics") return send(res, 200, JSON.stringify(analytics), "application/json");
       if (req.method === "GET" && p === VERIFICATION_FILE_PATH) {

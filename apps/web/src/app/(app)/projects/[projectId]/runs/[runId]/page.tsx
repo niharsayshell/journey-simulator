@@ -5,7 +5,9 @@ import { useParams } from "next/navigation";
 import { Ban, Download, Image as ImageIcon } from "lucide-react";
 import { api } from "@/lib/api";
 import { useApi, useProjectEvents } from "@/lib/hooks";
-import type { Artifact, RunDetail, StepResult } from "@/lib/types";
+import type { AnalyticsHit, Artifact, RunDetail, StepResult } from "@/lib/types";
+import { Badge } from "@/components/ui/badge";
+import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { PageHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +21,70 @@ function Screenshot({ a, onOpen }: { a: Artifact; onOpen: (id: string) => void }
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={`/api/v1/artifacts/${a.id}/content`} alt="Step screenshot" className="h-28 w-44 object-cover object-top transition group-hover:opacity-90" loading="lazy" />
     </button>
+  );
+}
+
+const VENDOR_LABEL: Record<AnalyticsHit["vendor"], string> = {
+  GA4: "Google Analytics 4",
+  UNIVERSAL_ANALYTICS: "Universal Analytics",
+  GOOGLE_TAG: "Google tag / GTM script",
+  META_PIXEL: "Meta Pixel",
+  MICROSOFT_CLARITY: "Microsoft Clarity",
+};
+
+/** What the page actually sent to analytics tools during this run. */
+function AnalyticsCard({ hits }: { hits: AnalyticsHit[] }) {
+  const ga4 = hits.filter((h) => h.vendor === "GA4");
+  const ga4Sent = ga4.filter((h) => h.outcome === "sent");
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Analytics tracking</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        {hits.length === 0 ? (
+          <Alert variant="warning" title="No analytics requests were detected in this run">
+            The page did not send anything to Google Analytics, GTM, Meta Pixel or Clarity while this run was open. Common causes: a cookie-consent banner
+            that blocks tracking until someone clicks “Accept”, a tag that fires late (try a longer Wait step), or no tag on this page.
+          </Alert>
+        ) : (
+          <>
+            {ga4.length > 0 && (
+              <Alert variant={ga4Sent.length ? "success" : "error"} title={ga4Sent.length ? "Google Analytics 4 received hits from this run" : "Google Analytics 4 hits did not go through"}>
+                {ga4Sent.length} GA4 request(s) accepted
+                {ga4Sent[0]?.id ? ` by ${ga4Sent[0].id}` : ""}. GA4 may still exclude automated browsers from its reports (bot filtering), so a hit that was
+                sent here can be missing from GA reports.
+              </Alert>
+            )}
+            <Table>
+              <THead>
+                <TR>
+                  <TH>Tool</TH>
+                  <TH>ID</TH>
+                  <TH>Events</TH>
+                  <TH>Result</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {hits.map((h, i) => (
+                  <TR key={i}>
+                    <TD>{VENDOR_LABEL[h.vendor]}</TD>
+                    <TD className="font-mono text-xs">{h.id ?? "—"}</TD>
+                    <TD className="text-xs">{h.events.join(", ") || "—"}</TD>
+                    <TD>
+                      <Badge variant={h.outcome === "sent" ? "success" : "destructive"}>
+                        {h.outcome}
+                        {h.status ? ` · ${h.status}` : ""}
+                      </Badge>
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -206,6 +272,8 @@ export default function RunInspector() {
             )}
           </CardContent>
         </Card>
+
+        {run.observed?.analytics && <AnalyticsCard hits={run.observed.analytics} />}
 
         {run.navigationUrls && run.navigationUrls.length > 0 && (
           <Card>

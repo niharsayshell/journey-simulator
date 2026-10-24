@@ -1,5 +1,8 @@
 import { chromium, firefox, webkit, devices, type Browser, type BrowserContext, type BrowserType, type Page, type Route } from "playwright";
 import { existsSync } from "node:fs";
+import { detectAnalyticsHit, type AnalyticsHit } from "./analytics";
+
+export * from "./analytics";
 import type { BrowserEngine, ProxyType } from "@js/shared";
 import {
   assertPublicDestination,
@@ -117,6 +120,8 @@ function networkErrorCode(err: unknown): "connectionrefused" | "namenotresolved"
 }
 
 export interface NetworkGuard {
+  /** Analytics / tag requests the page made, with their outcome. */
+  analytics: AnalyticsHit[];
   /** Blocked requests (for logs and reporting). */
   blocked: Array<{ url: string; reason: string; isNavigation: boolean }>;
   /** First blocked top-level navigation, which fails the run. */
@@ -130,6 +135,7 @@ export interface NetworkGuard {
  */
 export async function installNetworkGuard(context: BrowserContext, opts: GuardOptions): Promise<NetworkGuard> {
   const blocked: NetworkGuard["blocked"] = [];
+  const analytics: AnalyticsHit[] = [];
   let violation: string | null = null;
   const dnsCache = new Map<string, Promise<void>>();
 
@@ -160,9 +166,15 @@ export async function installNetworkGuard(context: BrowserContext, opts: GuardOp
     const raw = request.url();
     if (raw.startsWith("data:") || raw.startsWith("blob:") || raw === "about:blank") return route.continue();
     const isNavigation = request.isNavigationRequest() && request.frame().parentFrame() === null;
+    const recordAnalytics = (status: number, outcome: AnalyticsHit["outcome"]) => {
+      if (analytics.length >= 200) return;
+      const hit = detectAnalyticsHit(raw, request.postData());
+      if (hit) analytics.push({ ...hit, page: hit.page?.slice(0, 500), status, outcome, at: new Date().toISOString() });
+    };
     const block = (url: string, err: unknown) => {
       const reason = err instanceof Error ? err.message : String(err);
       blocked.push({ url: url.slice(0, 300), reason, isNavigation });
+      recordAnalytics(0, "blocked");
       if (isNavigation && !violation) violation = `Blocked navigation to ${url.slice(0, 200)}: ${reason}`;
       return route.abort("blockedbyclient").catch(() => undefined);
     };
@@ -180,6 +192,7 @@ export async function installNetworkGuard(context: BrowserContext, opts: GuardOp
     try {
       response = await route.fetch({ maxRedirects: 0, headers, timeout: opts.requestTimeoutMs ?? 30_000 });
     } catch (err) {
+      recordAnalytics(0, "failed");
       return route.abort(networkErrorCode(err)).catch(() => undefined);
     }
     const status = response.status();
@@ -193,10 +206,11 @@ export async function installNetworkGuard(context: BrowserContext, opts: GuardOp
         return block(new URL(location, raw).toString(), err);
       }
     }
+    recordAnalytics(response.status(), response.status() < 400 ? "sent" : "failed");
     return route.fulfill({ response }).catch(() => undefined);
   });
 
-  return { blocked, navigationViolation: () => violation };
+  return { analytics, blocked, navigationViolation: () => violation };
 }
 
 export interface BrowserSession {
